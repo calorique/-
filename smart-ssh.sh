@@ -1,76 +1,16 @@
 #!/bin/bash
 
 ################################################################
-# Script: install-from-iso.sh
+# Script: smart-ssh.sh
 # Author: Lambert Z.Y. Li
 # Date: 2020-8-07 11:03 AM
-# Purpose: install software from local ISO image.
+# Purpose: login ssh server automatically
 ################################################################
 
 function die()
 {
 	echo -e "\033[31m$*\033[0m"
 	exit 255
-}
-
-function error()
-{
-	echo -e "\033[31m$*\033[0m"
-}
-
-function warn()
-{
-	echo -e "\033[33m$*\033[0m"
-}
-
-function note()
-{
-	echo -e "\033[36m$*\033[0m"
-}
-
-function info()
-{
-	echo -e "\033[32m$*\033[0m"
-}
-
-function check_dir()
-{
-	if [[ $# -gt 0 ]]
-	then
-		for X in "$@"
-		do
-			[[ -d ${X} ]] || die "${X} was not found!"
-		done
-	else
-		die "check_dir(): Null param!"
-	fi
-}
-
-function check_file()
-{
-	if [[ $# -gt 0 ]]
-	then
-		for X in "$@"
-		do
-			[[ -f ${X} ]] || die "${X} was not found!"
-		done
-	else
-		die "check_file(): Null param!"
-	fi
-}
-
-function check_exec()
-{
-	if [[ $# -gt 0 ]]
-	then
-		for X in "$@"
-		do
-			[[ -f ${X} ]] || die "${X} was not found!"
-			[[ -x ${X} ]] || die "${X} was not executable!"
-		done
-	else
-		die "check_exec(): Null param!"
-	fi
 }
 
 function usage()
