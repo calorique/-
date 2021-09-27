@@ -1,0 +1,38 @@
+#!/bin/bash
+
+usage() {
+	echo "Usage: $0 {keyword}"
+}
+
+die() {
+	echo "$*"
+	exit 255
+}
+
+succeed() {
+	echo "$*"
+	exit 0
+}
+
+# Main Process Start Here.
+[ $# -eq 1 ] || die "$(usage)"
+K=$1
+
+while true
+do
+	mapfile -t PIDLIST < <(ps -ef | awk -v U="${K}" '{if($1==U)print $2}')
+
+	[[ ${#PIDLIST[@]} -eq 0 ]] && succeed "All clear."
+
+	echo "Found process ${PIDLIST[*]} still running, trying to kill..."
+
+	for PID in "${PIDLIST[@]}"
+	do
+		echo "kill -9 ${PID}"
+		kill -9 "${PID}"
+	done
+
+	sleep 0.5
+done
+
+

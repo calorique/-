@@ -1,0 +1,47 @@
+#!/bin/bash
+
+die(){
+	echo "$*"
+	exit 255
+}
+
+usage(){
+	echo "$0 {NAME}"
+}
+
+
+# Main Process
+[[ $# -eq 1 ]] || die "$(usage)"
+
+if [[ "X$(uname -s)" == "XDarwin" ]]
+then
+	READLINK="greadlink"
+elif [[ "X$(uname -s)" == "XLinux" ]]
+then
+	READLINK="readlink"
+else
+	READLINK="readlink"
+fi
+
+X="$1"
+
+if which "$X" >/dev/null 2>&1; then
+	X="$(which "$X")"
+elif [[ -e ./"$X" ]]; then
+	X="./$X"
+fi
+
+while test -L "$X"; do
+	ls -l "$X"	
+	X=$(${READLINK} -f "$X")
+	NDIR=$(dirname "$X")
+	if [[ "X${NDIR}" == "X." ]]; then
+		NDIR="${ODIR}"
+		X="${ODIR}/${X}"
+	fi
+	ODIR="${NDIR}"
+done
+
+file "$X" || die "Failed to file $X."
+#End
+
