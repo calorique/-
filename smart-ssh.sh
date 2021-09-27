@@ -4,7 +4,7 @@
 # Script: smart-ssh.sh
 # Author: Lambert Z.Y. Li
 # Date: 2020-8-07 11:03 AM
-# Purpose: login ssh server automatically
+# Purpose: SSH client for login automatically.
 ################################################################
 
 function die()
@@ -48,6 +48,9 @@ expect {
 	*yes/no?* {
 		send yes\r; exp_continue;
 	}
+	*Y/n?* {
+		send y\r; exp_continue;
+	}	
 	*password:* {
 		exit 102;
 	}
@@ -59,8 +62,17 @@ expect {
 	}
 	*]\$* {
 		exit 100;
-	}
+	}	
 	*#\ * {
+		exit 100;
+	}	
+	*truenas%* {
+		exit 100;
+	}
+	*Now\ try\ logging\ into\ the\ machine* {
+		exit 100;
+	}
+	*:~\$* {
 		exit 100;
 	}
 	eof {
@@ -73,7 +85,7 @@ RET=$?
 if [[ ${RET} -eq 100 ]]
 then
 	echo "Test OK! Reconnect..."
-	ssh ${USER}@${HOST}
+	ssh -Y ${USER}@${HOST}
 elif [[ ${RET} -eq 102 ]]
 then
 	echo "Test failed! Update password..."
@@ -86,12 +98,16 @@ then
 	expect -c "set timeout 30;
 spawn ssh-copy-id ${USER}@${HOST}
 expect {
-	*yes/no?* {send yes\r; exp_continue;}
+	*Warning:* {exp_continue;}
+	*INFO:* {exp_continue;}
+	*yes/no?* {send yes\r;exp_continue;}
 	*password:* {interact;}
+	*${USER}@${HOST}\'s password:* {interact;}
 	eof {exit 0;}
 }";
 	"$0" "$@"
 fi
+
 
 
 
