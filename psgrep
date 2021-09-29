@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 keyword"
+    exit
+fi
+
+ps -ef | grep -v grep | grep -v "$0" | grep --color=auto -Ei "$*"
+
+
