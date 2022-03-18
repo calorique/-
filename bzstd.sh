@@ -138,4 +138,4 @@ fi
 # End
 
 # Uncompress command line (for examle):
-#tar -I zstd -xvf /mnt/udisk/PowerBoard.tar.zst -C ./
+#tar -I zstd -xvf /tmp/test.tar.zst -C ./
