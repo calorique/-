@@ -164,7 +164,7 @@ function rdesk_one_string_old()
 	INSTR=$(zenity --width=400 --entry \
 	--title "Remote Desktop" \
 	--text "Connection params:" \
-	--entry-text "hytera\150113013:******@10.161.53.50")
+	--entry-text "localhost\username:******@10.161.53.50")
 
 	[[ -z ${INSTR} ]] && die "Null param input!"
 
@@ -201,7 +201,7 @@ function rdesk_one_string_old()
 		fi
 	fi
 
-	[[ 'X******' == "X${PASSWD}" ]] && PASSWD=Arety2018
+	[[ 'X******' == "X${PASSWD}" ]] && PASSWD=123456
 	[[ -z ${DOMAIN} ]] || OPTION_DOMAIN="-d ${DOMAIN}"
 	[[ -z ${USER}   ]] || OPTION_USER="-u ${USER}"
 	[[ -z ${PASSWD} ]] || OPTION_PASSWD="-p ${PASSWD}"
