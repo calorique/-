@@ -105,7 +105,7 @@ expect {
 	*${USER}@${HOST}\'s password:* {interact;}
 	eof {exit 0;}
 }";
-	"$0" "$@"
+	exec "$0" "$@"
 fi
 
 
