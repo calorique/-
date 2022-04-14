@@ -191,33 +191,47 @@ function ssh_one_by_one()
 }
 
 
-function edit_menu()
-{
-	if [[ -x /usr/bin/subl ]]
-	then
-		/usr/bin/subl "$0"
-	elif [[ -x /usr/bin/gedit ]]
-	then
-		/usr/bin/gedit "$0"
-	elif [[ -x /usr/bin/nvim ]]
-	then
-		/usr/bin/nvim "$0"
-	fi
+
+
+function default_edit() {
+	command -v vi >/dev/null && EDITOR=vi
+	command -v vim >/dev/null && EDITOR=vim
+	command -v nvim >/dev/null && EDITOR=nvim
+	command -v gedit >/dev/null && EDITOR=gedit
+	#command -v subl && EDITOR=subl
+
+	"${EDITOR}" "$@"
 }
 
 
-function edit_connection_list()
-{
-	if [[ -x /usr/bin/subl ]]
-	then
-		/usr/bin/subl "${REMOTE_HOST_FILE}"
-	elif [[ -x /usr/bin/gedit ]]
-	then
-		/usr/bin/gedit "${REMOTE_HOST_FILE}"
-	elif [[ -x /usr/bin/nvim ]]
-	then
-		/usr/bin/nvim "${REMOTE_HOST_FILE}"
-	fi
+function zenity_edit() {
+	OPTION=$(zenity --width=250 --height=210 \
+		--list --title "Zenity Select Editor Dialog" \
+		--column "" \
+		--hide-header \
+		"sublime_text" \
+		"gedit" \
+		"neovim" \
+		"[Quit]")
+
+	EDITOR=vim
+	case ${OPTION} in
+		"sublime_text")
+			EDITOR=subl;;
+		"gedit")
+			EDITOR=gedit;;
+		"neovim")
+			EDITOR=nvim;;
+		"[Quit]")
+			exit 0;;
+	esac
+
+	command -v "${EDITOR}" >/dev/null || {
+		zenity --warning --width=200 --text "${EDITOR} was not found, try other editor!"
+		zenity_edit "$@"
+	}
+
+	"${EDITOR}" "$@"
 }
 
 
@@ -268,7 +282,7 @@ unset https_proxy
 
 #		--column "Host:Domain:User:Passwd" \
 #		--column "--------------------------------------------------" \
-OPTN=$(zenity --width=500 --height=600 \
+OPTN=$(zenity --width=550 --height=600 \
 		--list --title "Zenity SSH Dialog" \
 		--column "" \
 		--hide-header \
@@ -289,9 +303,9 @@ case ${OPTN} in
 	"Manual input: one by one")
 		ssh_one_by_one;;
 	"[Edit connection list...]")
-		edit_connection_list;;
+		default_edit "${REMOTE_HOST_FILE}";;
 	"[Edit this menu...]")
-		edit_menu;;
+		default_edit $0;;
 	*)
 		#zenity --width=120 --error --text="Invalid option!";;
 		validate_param "${OPTN}"
