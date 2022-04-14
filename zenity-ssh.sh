@@ -105,7 +105,6 @@ function ssh_one_string()
 	--title "Remote Desktop" \
 	--text "Connection params:" \
 	--entry-text "Hostname:root:123456:Desciption")
-	#--entry-text "hytera\150113013:******@10.161.53.50")
 
 	[[ -z ${INSTR} ]] && die "Null param input!"
 
