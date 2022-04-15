@@ -6,7 +6,8 @@
 
 #REMOTE_HOST_FILE="${HOME}/.ssh/ssh_hist.list"
 REMOTE_HOST_FILE="/home/local/etc/ssh_history"
-SMART_SSH='/home/local/bin/smart-ssh.sh'
+#SMART_SSH='/home/local/bin/smart-ssh.sh'
+KNOWN_HOSTS="${HOME}/.ssh/known_hosts"
 
 function die()
 {
@@ -81,6 +82,10 @@ function check_exec()
 	fi
 }
 
+function check_cmd() {
+	[[ $# -eq 1 ]] || die "\"$*\" is more than 1 param!"
+	command -v $1 >/dev/null || die "Command \"$1\" was not found in system!"
+}
 
 function check_root_privilege()
 {
@@ -88,13 +93,6 @@ function check_root_privilege()
 	[[ "X${USER}" == "Xroot" ]] || die "Current user is not root!"
 	# Without practice
 	#[[ $(id -u) -eq 0 ]] || die "Only user root is allowed to run this script!"
-}
-
-
-function do_ssh() {
-	local USER=$2
-	local HOST=$1
-	"${SMART_SSH}" "${USER}@${HOST}"
 }
 
 
@@ -135,8 +133,8 @@ function ssh_one_string()
 	if ping -c 2 "${HOST}"
 	then
 		echo "${INSTR}" >>"${REMOTE_HOST_FILE}"
-		#do_ssh "${HOST}" "${USER}" #"${PASSWD}"
-		"${SMART_SSH}" "${USER}@${HOST}"
+		do_ssh "${HOST}" "${USER}" #"${PASSWD}"
+		#"${SMART_SSH}" "${USER}@${HOST}"
 	else
 		zenity --width=180 --error --text="Host ${HOST} is unreachable!"
 		exit 2
@@ -152,7 +150,8 @@ function ssh_one_by_one()
 		--separator="," \
 		--add-entry="host" \
 		--add-entry="user" \
-		--add-password="password")
+		--add-password="password" \
+		--add-entry="desciption")
 
 	[[ -z ${INSTR} ]] && die "Null param input!"
 
@@ -164,6 +163,9 @@ function ssh_one_by_one()
 	
 	local PASSWD
 	PASSWD=$(echo "${INSTR}" | awk -F',' '{print $3}')
+
+	local DESCRIPT
+	DESCRIPT=$(echo "${INSTR}" | awk -F',' '{print $3}')
 
 	if [[ -z ${HOST} ]]
 	then
@@ -190,6 +192,45 @@ function ssh_one_by_one()
 }
 
 
+function new_session_with_zenity()
+{
+	local INSTR
+	INSTR=$(zenity --forms --title="Remote Desktop" \
+		--text="With params:" \
+		--separator="," \
+		--add-entry="host" \
+		--add-entry="user" \
+		--add-password="password" \
+		--add-entry="descript")
+
+	[[ -z ${INSTR} ]] && die "Null param input!"
+
+	local HOST
+	HOST=$(echo "${INSTR}" | awk -F',' '{print $1}')
+	local USER
+	USER=$(echo "${INSTR}" | awk -F',' '{print $2}')
+	local PASSWD
+	PASSWD=$(echo "${INSTR}" | awk -F',' '{print $3}')
+	local DESC
+	DESC=$(echo "${INSTR}" | awk -F',' '{print $4}')
+
+	[[ -z ${HOST} ]] || {
+		#zenity --width=250 --error --text="Host address is either invalid or null!"
+		echo "Host name is absent."
+		new_session_with_zenity "$@"
+	}
+
+	[[ -z ${USER} ]] || {
+		#zenity --width=250 --error --text="User name is either invalid or null!"
+		echo "User name is absent."
+		new_session_with_zenity "$@"
+	}
+
+	echo "${HOST}:${DOMAIN}:${USER}:${PASSWD}:${DESC}" | tee -a "${REMOTE_HOST_FILE}" \
+		|| die "Failed to create new session!"
+
+	do_ssh "${HOST}" "${USER}" "${PASSWD}" "${DESC}" || new_session_with_zenity "$@"
+}
 
 
 function default_edit() {
@@ -198,6 +239,9 @@ function default_edit() {
 	command -v nvim >/dev/null && EDITOR=nvim
 	command -v gedit >/dev/null && EDITOR=gedit
 	#command -v subl && EDITOR=subl
+
+	#echo "EDITOR=${EDITOR}"
+	#echo "$@"
 
 	"${EDITOR}" "$@"
 }
@@ -262,14 +306,129 @@ function ssh_connect()
 	fi
 }
 
+function clear_known_host()
+{
+	HOSTNAME=$1
+
+	[[ -z "${KNOWN_HOSTS}" ]] || return 0
+	[[ -f "${KNOWN_HOSTS}" ]] || return 0
+
+	XHASH="$(grep "${HOSTNAME}" "${KNOWN_HOSTS}" | awk '{print $3}' | head -1)"
+	[[ -z "${XHASH}" ]] && return 0
+
+	TMP_HOSTS="$(mktemp --suffix=_known_hosts)"
+	grep -v "${XHASH}" "${KNOWN_HOSTS}" >"${TMP_HOSTS}" \
+		&& cat "${TMP_HOSTS}" >"${KNOWN_HOSTS}" \
+		&& rm -f "${TMP_HOSTS}"
+}
+
+function do_ssh() {
+	HOST="$1"
+	USER="$2"
+	#PSWD="$3"
+
+	#echo "USER=${USER}"
+	#echo "HOST=${HOST}"
+
+	[[ "X${HOST}" == "X" ]] && {
+		echo "Host name is absent."
+		return 255
+	}
+
+	[[ "X${USER}" == "X" ]] && {
+		echo "Username is absent."
+		return 255
+	}
+
+	expect -c "set timeout 30;
+spawn ssh ${USER}@${HOST}
+expect {
+	*yes/no?* {
+		send yes\r; exp_continue;
+	}
+	*Y/n?* {
+		send y\r; exp_continue;
+	}
+	*password:* {
+		exit 102;
+	}
+	*REMOTE\ HOST\ IDENTIFICATION\ HAS\ CHANGED* {
+		exit 103;
+	}
+	** {
+		exit 100;
+	}
+	*]\$* {
+		exit 100;
+	}
+	*#\ * {
+		exit 100;
+	}
+	*truenas%* {
+		exit 100;
+	}
+	*Now\ try\ logging\ into\ the\ machine* {
+		exit 100;
+	}
+	*:~\$* {
+		exit 100;
+	}
+	*\ ~\ #* {
+		exit 100;
+	}
+	eof {
+		exit 0;
+	}
+}";
+
+	RET=$?
+
+	if [[ ${RET} -eq 100 ]]
+	then
+		echo "Test OK! Reconnect..."
+		ssh -Y ${USER}@${HOST}
+	elif [[ ${RET} -eq 102 ]]
+	then
+		echo "Test failed! Update password..."
+		ssh-copy-id ${USER}@${HOST}
+		"$0" "$@"
+	elif [[ ${RET} -eq 103 ]]
+	then
+		echo "Test failed! Update new key..."
+		#ssh-keygen -R ${HOST}
+		clear_known_host "${HOST}"
+		expect -c "set timeout 30;
+spawn ssh-copy-id ${USER}@${HOST}
+expect {
+	*Warning:* {exp_continue;}
+	*INFO:* {exp_continue;}
+	*yes/no?* {send yes\r;exp_continue;}
+	*password:* {interact;}
+	*${USER}@${HOST}\'s password:* {interact;}
+	eof {exit 0;}
+}";
+	"$0" "$@"
+	fi
+}
 
 # Main Process
-check_exec /usr/bin/ssh
-check_exec /usr/bin/zenity
-check_exec "${SMART_SSH}"
+check_cmd ssh
+check_cmd zenity
+#check_exec "${SMART_SSH}"
 
 [[ -f "${REMOTE_HOST_FILE}" ]] || {
 	touch "${REMOTE_HOST_FILE}" || die "Failed to create ${REMOTE_HOST_FILE}!"
+}
+
+[[ $# -ge 2 ]] && {
+	local HOST="$1"
+	local USER="$2"
+	local PSWD="$3"
+
+	echo "HOST=$1,USER=$2,PSWD=$3"
+	do_ssh "$@"
+
+	exit 0
 }
 
 unset https_proxy
@@ -297,14 +456,14 @@ OPTN=$(zenity --width=550 --height=600 \
 #zenity --width=500 --info --text="Confirm selection: ${OPTN}"
 
 case ${OPTN} in
-	"[Create new remote connection...]" |	"Manual input: one string")
-		ssh_one_string;;
-	"Manual input: one by one")
-		ssh_one_by_one;;
+	"[Create new remote connection...]")
+		#ssh_one_string;;
+		#ssh_one_by_one;;
+		new_session_with_zenity;;
 	"[Edit connection list...]")
 		default_edit "${REMOTE_HOST_FILE}";;
 	"[Edit this menu...]")
-		default_edit $0;;
+		default_edit "$(readlink -f $0)";;
 	*)
 		#zenity --width=120 --error --text="Invalid option!";;
 		validate_param "${OPTN}"
