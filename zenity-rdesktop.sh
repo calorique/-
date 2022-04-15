@@ -12,9 +12,15 @@
 REMOTE_HOST_FILE="/home/local/etc/rdp_history"
 TOOLBOX=/home/lambert/exchanges
 
-function die()
+function die_x()
 {
 	echo -e "\033[31m$*\033[0m"
+	exit 255
+}
+
+function die()
+{
+	echo -e "\033[31mScript : ${FUNCNAME[*]} for:\033[0m $*"
 	exit 255
 }
 
@@ -100,7 +106,17 @@ function check_root_privilege()
 
 
 function do_xfreerdp() {
-	check_cmd "xfreerdp"
+	command -v xfreerdp || return 255
+
+	[[ -z $1 ]] && return 255
+	HOST="$1"
+
+	[[ -z $2 ]] && PORT='3389'
+
+	OPTION_HOST="/v:${HOST}:${PORT}"
+	OPTION_DOMAIN="/d:$3"
+	OPTION_USER="/u:$4"
+	OPTION_PASSWD="/p:$5"
 
 	# Wayland
 	#echo wlfreerdp /cert:tofu /drive:SHARE,"$(readlink -f "${HOME}")" +window-drag /w:1440 /h:900 /v:"$1" /d:"$2" /u:"$3" /p:"$4"
@@ -113,24 +129,48 @@ function do_xfreerdp() {
 	#	+window-drag /w:1440 /h:900 /v:"${HOST}" /u:"${USER}" /p:"${PASSWD}
 	#xfreerdp /cert:tofu /drive:SHARE,"$(readlink -f "${HOME}")" \
 	#	+window-drag /w:1440 /h:900 /v:"${HOST}" /u:"${USER}" /p:"${PASSWD}"
-	echo "Try to connect remote computer with xfreerdp: "
-	echo xfreerdp /sec:nla /cert:tofu /drive:TOOLBOX,"${TOOLBOX}" \
-		+themes +decorations +menu-anims +window-drag /w:1440 /h:900 /v:"$1" /d:"$2" /u:"$3" /p:"$4" | tee -a "/tmp/$(basename $0).log"
+	echo "Try xfreerdp... "
+	echo \
+	xfreerdp /cert:tofu /drive:TOOLBOX,"${TOOLBOX}" \
+		/auto-request-control \
+		+async-channels +auto-reconnect \
+		+bitmap-cache +gfx-progressive \
+		+aero +themes +decorations +menu-anims +window-drag \
+		/bpp:24 /w:1440 /h:900 \
+		"${OPTION_HOST}" "${OPTION_DOMAIN}" "${OPTION_USER}" "${OPTION_PASSWD}" \
+			| tee -a "/tmp/$(basename $0).log"
 
 	#https_proxy="" exec xfreerdp /sec:nla /cert:tofu /drive:SHARE,"$(readlink -f "${HOME}")" +window-drag /w:1440 /h:900 /v:"$1" /d:"$2" /u:"$3" /p:"$4"
-	https_proxy="" xfreerdp /sec:nla /cert:tofu /drive:TOOLBOX,"${TOOLBOX}" \
-		+themes +decorations +menu-anims +window-drag /w:1440 /h:900 /v:"$1" /d:"$2" /u:"$3" /p:"$4"
+	https_proxy="" \
+	xfreerdp /cert:tofu /drive:TOOLBOX,"${TOOLBOX}" \
+		/auto-request-control \
+		+async-channels +auto-reconnect \
+		+bitmap-cache +gfx-progressive \
+		+aero +themes +decorations +menu-anims +window-drag \
+		/bpp:24 /w:1440 /h:900 \
+		"${OPTION_HOST}" "${OPTION_DOMAIN}" "${OPTION_USER}" "${OPTION_PASSWD}"
 	RET=$?
 
 	[[ ${RET} -eq 0 || ${RET} -eq 5 ]] && return 0
 
-	echo "Failed to connect remote computer with xfreerdp (ret=${RET}), try to reconnect with rdesktop:"
+	echo "xfreerdp failed, ret=${RET}"
 
 	return ${RET}
 }
 
 function do_rdesktop() {
-	check_cmd "rdesktop"
+	command -v rdesktop || return 255
+
+	[[ -z $1 ]] && return 255
+	HOST="$1"
+
+	[[ -z $2 ]] && PORT=3389
+	OPTION_HOST="${HOST}:${PORT}"
+
+	[[ -z $3 ]] || OPTION_DOMAIN="-d $3"
+	[[ -z $4 ]] || OPTION_USER="-u $4"
+	[[ -z $5 ]] || OPTION_PASSWD="-p $5"
+
 	#rdesktop -m -N -C -z -x 0x80 -a 8 -k en-us -a 16 -g 1440x900 \
 	#	-r sound:remote -r disk:RDP="$(readlink -f "${HOME}")" -r clipboard:CLIPBOARD \
 	#	"${OPTION_DOMAIN}" "${OPTION_USER}" "${OPTION_PASSWD}" "${HOST}"
@@ -140,19 +180,18 @@ function do_rdesktop() {
 	#	-d "${DOMAIN}" -u "${USER}" -p "${PASSWD}" "${HOST}"
 
 	#echo "${HOST}:${DOMAIN}:${USER}:${PASSWD}" >>"${REMOTE_HOST_FILE}"
-	echo "Try to connect remote computer with rdesktop: "
+	echo "Try rdesktop... "
 	echo rdesktop -m -N -C -z -x 0x80 -a 8 -k en-us -a 16 -g 1440x900 \
 		-r sound:remote -r disk:TOOLBOX="${TOOLBOX}" -r clipboard:CLIPBOARD \
-		-d "$2" -u "$3" -p "$4" "$1" | tee -a "/tmp/$(basename $0).log"
+		"${OPTION_DOMAIN}" "${OPTION_USER}" "${OPTION_PASSWD}" "${OPTION_HOST}" | tee -a "/tmp/$(basename $0).log"
 
 	https_proxy="" rdesktop -m -N -C -z -x 0x80 -a 8 -k en-us -a 16 -g 1440x900 \
 		-r sound:remote -r disk:TOOLBOX="${TOOLBOX}" -r clipboard:CLIPBOARD \
-		-d "$2" -u "$3" -p "$4" "$1"
+		"${OPTION_DOMAIN}" "${OPTION_USER}" "${OPTION_PASSWD}" "${OPTION_HOST}"
 	RET=$?
-
 	[[ ${RET} -eq 0 || ${RET} -eq 62 ]] && return 0
 
-	echo "Failed to connect remote computer with rdesktop (ret=${RET}), try to reconnect with rdesktop:"
+	echo "rdesktop failed, ret=${RET}"
 
 	return ${RET}
 }
@@ -164,7 +203,7 @@ function rdesk_one_string_old()
 	INSTR=$(zenity --width=400 --entry \
 	--title "Remote Desktop" \
 	--text "Connection params:" \
-	--entry-text "localhost\username:******@10.161.53.50")
+	--entry-text "hytera\150113013:******@10.161.53.50")
 
 	[[ -z ${INSTR} ]] && die "Null param input!"
 
@@ -201,7 +240,7 @@ function rdesk_one_string_old()
 		fi
 	fi
 
-	[[ 'X******' == "X${PASSWD}" ]] && PASSWD=123456
+	[[ 'X******' == "X${PASSWD}" ]] && PASSWD=Arety2018
 	[[ -z ${DOMAIN} ]] || OPTION_DOMAIN="-d ${DOMAIN}"
 	[[ -z ${USER}   ]] || OPTION_USER="-u ${USER}"
 	[[ -z ${PASSWD} ]] || OPTION_PASSWD="-p ${PASSWD}"
@@ -257,7 +296,6 @@ function rdesk_one_string()
 	--title "Remote Desktop" \
 	--text "Connection params:" \
 	--entry-text "Hostname:Domain:Administrator:123456:Desciption")
-	#--entry-text "hytera\150113013:******@10.161.53.50")
 
 	[[ -z ${INSTR} ]] && die "Null param input!"
 
@@ -290,9 +328,9 @@ function rdesk_one_string()
 	fi
 
 	#[[ 'X******' == "X${PASSWD}" ]] && PASSWD=Arety2018
-	[[ -z ${DOMAIN} ]] || OPTION_DOMAIN="-d ${DOMAIN}"
-	[[ -z ${USER}   ]] || OPTION_USER="-u ${USER}"
-	[[ -z ${PASSWD} ]] || OPTION_PASSWD="-p ${PASSWD}"
+	#[[ -z ${DOMAIN} ]] || OPTION_DOMAIN="-d ${DOMAIN}"
+	#[[ -z ${USER}   ]] || OPTION_USER="-u ${USER}"
+	#[[ -z ${PASSWD} ]] || OPTION_PASSWD="-p ${PASSWD}"
 
 	if ping -c 2 "${HOST}"
 	then
@@ -309,50 +347,60 @@ function new_session_with_zenity()
 	local INSTR
 	INSTR=$(zenity --forms --title="Remote Desktop" \
 		--text="With params:" \
-		--separator="," \
-		--add-entry="host" \
-		--add-entry="domain" \
-		--add-entry="user" \
-		--add-password="password" \
-		--add-entry="descript")
+		--separator=":" \
+		--add-entry="Host*" \
+		--add-entry="Port" \
+		--add-entry="Domain" \
+		--add-entry="User*" \
+		--add-password="Password*" \
+		--add-entry="Descript")
 
-	[[ -z ${INSTR} ]] && die "Null param input!"
+	echo "INSTR=${INSTR}"
+
+	[[ -z ${INSTR} ]] && {
+		echo "Null param input!"
+		#new_session_with_zenity "$@"
+		#return 255
+		exec "$0" "$@"
+	}
 
 	local HOST
-	HOST=$(echo "${INSTR}" | awk -F',' '{print $1}')
+	HOST=$(echo "${INSTR}" | awk -F: '{print $1}')
+	[[ -z ${HOST} ]] && {
+		echo "Host name is absent!"
+		new_session_with_zenity "${HOST}:${PORT}:${DOMAIN}:${USER}:${PASSWD}:${DESC}"
+	}
+
+	local PORT
+	PORT=$(echo "${INSTR}" | awk -F: '{print $2}')
+
 	local DOMAIN
-	DOMAIN=$(echo "${INSTR}" | awk -F',' '{print $2}')
+	DOMAIN=$(echo "${INSTR}" | awk -F: '{print $3}')
+
 	local USER
-	USER=$(echo "${INSTR}" | awk -F',' '{print $3}')
+	USER=$(echo "${INSTR}" | awk -F: '{print $4}')
+	[[ -z ${USER} ]] && {
+		echo "User name is absent!"
+		new_session_with_zenity "${HOST}:${PORT}:${DOMAIN}:${USER}:${PASSWD}:${DESC}"
+	}
+
 	local PASSWD
-	PASSWD=$(echo "${INSTR}" | awk -F',' '{print $4}')
+	PASSWD=$(echo "${INSTR}" | awk -F: '{print $5}')
+	[[ -z ${PASSWD} ]] && {
+		echo "Password is absent!"
+		new_session_with_zenity "${HOST}:${PORT}:${DOMAIN}:${USER}:${PASSWD}:${DESC}"
+	}
+
 	local DESC
-	DESC=$(echo "${INSTR}" | awk -F',' '{print $5}')
+	DESC=$(echo "${INSTR}" | awk -F: '{print $6}')
 
-	[[ 'X******' == "X${PASSWD}" ]] && PASSWD=Arety2018
-	if [[ -z ${HOST} ]]
-	then
-		zenity --width=250 --error --text="Host address is either invalid or null!"
-		exit 1
-	fi
-
-	if ! ping -c 1 "${HOST}"
-	then
-		zenity --width=200 --error --text="The host is unreachable!"
-		exit 2
-	fi
-
-	[[ -z ${DOMAIN} ]] || OPTION_DOMAIN="-d ${DOMAIN}"
-	[[ -z ${USER} ]] || OPTION_USER="-u ${USER}"
-	[[ -z ${PASSWD} ]] || OPTION_PASSWD="-p ${PASSWD}"
-
-	echo "${HOST}:${DOMAIN}:${USER}:${PASSWD}:${DESC}" | tee -a "${REMOTE_HOST_FILE}" \
+	echo "${HOST}:${PORT}:${DOMAIN}:${USER}:${PASSWD}:${DESC}" | tee -a "${REMOTE_HOST_FILE}" \
 		|| die "Failed to create new session!"
 
-	rdesktop_connect "${HOST}:${DOMAIN}:${USER}:${PASSWD}" || {
-		echo "rdesktop_connectr returned $?"
+	rdesktop_connect "${HOST}:${PORT}:${DOMAIN}:${USER}:${PASSWD}:${DESC}" || {
+		echo "rdesktop_connect()=$?"
 		default_edit "${REMOTE_HOST_FILE}"
-		exec $0 "$@"
+		exec "$0" "$@"
 	}
 }
 
@@ -401,23 +449,29 @@ function zenity_edit() {
 
 function rdesktop_connect()
 {
+	echo "$@"
+
 	[[ -z "$1" ]] && die "rdesktop_connect(): Null string input."
 
 	HOST="$(echo "$1" | awk -F: '{print $1}')"
 	[[ -z "${HOST}" ]] && die "HOST is Null!"
 
-	DOMAIN="$(echo "$1" | awk -F: '{print $2}')"
+	PORT="$(echo "$1" | awk -F: '{print $2}')"
+	#[[ -z "${HOST}" ]] && die "PORT is Null!"
+
+	DOMAIN="$(echo "$1" | awk -F: '{print $3}')"
 	#[[ -z "${DOMAIN}" ]] && die "DOMAIN is Null!"
 
-	USER="$(echo "$1" | awk -F: '{print $3}')"
-	[[ -z "${USER}" ]] && die "USER is Null!"
+	USER="$(echo "$1" | awk -F: '{print $4}')"
+	#[[ -z "${USER}" ]] && die "USER is Null!"
 
-	PASSWD="$(echo "$1" | awk -F: '{print $4}')"
-	[[ -z "${PASSWD}" ]] && die "PASSWD is Null!"
+	PASSWD="$(echo "$1" | awk -F: '{print $5}')"
+	#[[ -z "${PASSWD}" ]] && die "PASSWD is Null!"
 
 	if ping -c 2 "${HOST}"
 	then
-		do_xfreerdp "${HOST}" "${DOMAIN}" "${USER}" "${PASSWD}" || do_rdesktop "${HOST}" "${DOMAIN}" "${USER}" "${PASSWD}"
+		do_xfreerdp "${HOST}" "${PORT}" "${DOMAIN}" "${USER}" "${PASSWD}" # ||
+		#do_rdesktop "${HOST}" "${PORT}" "${DOMAIN}" "${USER}" "${PASSWD}"
 		echo "All done!"
 	else
 		zenity --width=180 --error --text="The host ${HOST} is unreachable!"
@@ -426,6 +480,19 @@ function rdesktop_connect()
 }
 
 # Main Process
+[[ $# -ge 4 ]] && {
+	[[ -z "$1" ]] && die "HOST is Null!"
+	[[ -z "$3" ]] && die "USER is Null!"
+	[[ -z "$4}" ]] && die "PASSWD is Null!"
+
+	grep "$1:$2:$3:$4" "${REMOTE_HOST_FILE}" || {
+		echo "$1:$2:$3:$4:$5_$6_$7_$8_$9" >>"${REMOTE_HOST_FILE}"
+	}
+
+	do_xfreerdp "$1" "$2" "$3" "$4" || do_rdesktop "$1" "$2" "$3" "$4"
+	exit $?
+}
+
 check_cmd "zenity"
 
 [[ -f "${REMOTE_HOST_FILE}" ]] || {
@@ -470,7 +537,7 @@ case ${OPTN} in
 		;;
 	"[Edit this menu...]")
 		#zenity_edit "$0"
-		default_edit "$0"
+		default_edit "$(readlink -f $0)"
 		exec $0 "$@"
 		;;
 	"[Quit]")
